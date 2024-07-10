@@ -17,7 +17,10 @@
 package netns
 
 import (
+	"context"
 	"errors"
+
+	"github.com/sirupsen/logrus"
 
 	"github.com/Microsoft/hcsshim/hcn"
 )
@@ -30,15 +33,30 @@ type NetNS struct {
 }
 
 // NewNetNS creates a network namespace for the sandbox.
-func NewNetNS(baseDir string) (*NetNS, error) {
+func NewNetNS(ctx context.Context, baseDir string) (*NetNS, error) {
 	temp := hcn.HostComputeNamespace{}
 	hcnNamespace, err := temp.Create()
+	logrus.Printf("TESTING - Creating network namespace. This is hcnNamespace: %v\n", hcnNamespace)
+	logrus.Printf("TESTING - Creating network namespace. This is hcnNamespace.Id: %v\n", hcnNamespace.Id)
 	if err != nil {
 		return nil, err
 	}
 
 	return &NetNS{path: hcnNamespace.Id}, nil
 }
+
+func (n *NetNS) NetNamespaceExist(ctx context.Context) bool {
+	hcnNamespace, err := hcn.GetNamespaceByID(n.path)
+	logrus.Printf("TESTING - Checking if NetNamespaceExist: %v\n", hcnNamespace)
+	if err != nil {
+	    if hcn.IsNotFoundError(err) {
+	        return false
+	    }
+	    return true
+	}
+	return true
+}
+	
 
 // NewNetNS returns the netns from pid or a new netns if pid is 0.
 func NewNetNSFromPID(baseDir string, pid uint32) (*NetNS, error) {
@@ -52,7 +70,8 @@ func LoadNetNS(path string) *NetNS {
 
 // Remove removes network namespace if it exists and not closed. Remove is idempotent,
 // meaning it might be invoked multiple times and provides consistent result.
-func (n *NetNS) Remove() error {
+func (n *NetNS) Remove(ctx context.Context) error {
+	logrus.Printf("TESTING - Removing network namespace: %v\n", n.path)
 	hcnNamespace, err := hcn.GetNamespaceByID(n.path)
 	if err != nil {
 		if hcn.IsNotFoundError(err) {

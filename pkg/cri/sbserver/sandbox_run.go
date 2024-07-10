@@ -154,7 +154,7 @@ func (c *criService) RunPodSandbox(ctx context.Context, r *runtime.RunPodSandbox
 		if c.config.NetNSMountsUnderStateDir {
 			netnsMountDir = filepath.Join(c.config.StateDir, "netns")
 		}
-		sandbox.NetNS, err = netns.NewNetNS(netnsMountDir)
+		sandbox.NetNS, err = netns.NewNetNS(ctx, netnsMountDir)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create network namespace for sandbox %q: %w", id, err)
 		}
@@ -163,7 +163,7 @@ func (c *criService) RunPodSandbox(ctx context.Context, r *runtime.RunPodSandbox
 		defer func() {
 			// Remove the network namespace only if all the resource cleanup is done
 			if retErr != nil && cleanupErr == nil {
-				if cleanupErr = sandbox.NetNS.Remove(); cleanupErr != nil {
+				if cleanupErr = sandbox.NetNS.Remove(ctx); cleanupErr != nil {
 					log.G(ctx).WithError(cleanupErr).Errorf("Failed to remove network namespace %s for sandbox %q", sandbox.NetNSPath, id)
 					return
 				}

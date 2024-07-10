@@ -32,12 +32,15 @@
 package netns
 
 import (
+	"context"
 	"crypto/rand"
 	"fmt"
 	"os"
 	"path"
 	"runtime"
 	"sync"
+
+	"github.com/containerd/log"
 
 	"github.com/containerd/containerd/mount"
 	cnins "github.com/containernetworking/plugins/pkg/ns"
@@ -177,9 +180,14 @@ type NetNS struct {
 }
 
 // NewNetNS creates a network namespace.
-func NewNetNS(baseDir string) (*NetNS, error) {
+func NewNetNS(ctx context.Context, baseDir string) (*NetNS, error) {
+	log.G(ctx).Println("TESTING - Creating network namespace")
 	return NewNetNSFromPID(baseDir, 0)
 }
+
+func (n *NetNS) NetNamespaceExist(ctx context.Context) bool {
+    return true
+}	
 
 // NewNetNS returns the netns from pid or a new netns if pid is 0.
 func NewNetNSFromPID(baseDir string, pid uint32) (*NetNS, error) {
@@ -197,7 +205,8 @@ func LoadNetNS(path string) *NetNS {
 
 // Remove removes network namespace. Remove is idempotent, meaning it might
 // be invoked multiple times and provides consistent result.
-func (n *NetNS) Remove() error {
+func (n *NetNS) Remove(ctx context.Context) error {
+	log.G(ctx).Printf("TESTING - Removing network namespace: %v\n", n.path)
 	return unmountNS(n.path)
 }
 
