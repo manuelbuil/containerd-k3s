@@ -259,8 +259,11 @@ func (c *criService) RunPodSandbox(ctx context.Context, r *runtime.RunPodSandbox
 		}
 	}
 
+	logrus.Println("TESTING - About to setup networking for pod")
+
 	// Setup the network namespace if host networking wasn't requested.
 	if !hostNetwork(config) && !userNsEnabled {
+		logrus.Println("TESTING - Setting up network namespace with !userNsEnabled")
 		// XXX: We do c&p of this code later for the podNetwork && userNsEnabled case too.
 		// We can't move this to a function, as the defer calls need to be executed if other
 		// errors are returned in this function. So, we would need more refactors to move
@@ -282,17 +285,18 @@ func (c *criService) RunPodSandbox(ctx context.Context, r *runtime.RunPodSandbox
 		if c.config.NetNSMountsUnderStateDir {
 			netnsMountDir = filepath.Join(c.config.StateDir, "netns")
 		}
-		sandbox.NetNS, err = netns.NewNetNS(netnsMountDir)
+		sandbox.NetNS, err = netns.NewNetNS(ctx, netnsMountDir)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create network namespace for sandbox %q: %w", id, err)
 		}
 		sandbox.NetNSPath = sandbox.NetNS.GetPath()
+		logrus.Println("TESTING - After NewNetNS, this is the NetNSPath: ", sandbox.NetNSPath)
 
 		defer func() {
 			// Remove the network namespace only if all the resource cleanup is done.
 			if retErr != nil && cleanupErr == nil {
-				if cleanupErr = sandbox.NetNS.Remove(); cleanupErr != nil {
-					log.G(ctx).WithError(cleanupErr).Errorf("Failed to remove network namespace %s for sandbox %q", sandbox.NetNSPath, id)
+				if cleanupErr = sandbox.NetNS.Remove(ctx); cleanupErr != nil {
+					logrus.WithError(cleanupErr).Errorf("Failed to remove network namespace %s for sandbox %q", sandbox.NetNSPath, id)
 					return
 				}
 				sandbox.NetNSPath = ""
@@ -320,7 +324,7 @@ func (c *criService) RunPodSandbox(ctx context.Context, r *runtime.RunPodSandbox
 				defer deferCancel()
 				// Teardown network if an error is returned.
 				if cleanupErr = c.teardownPodNetwork(deferCtx, sandbox); cleanupErr != nil {
-					log.G(ctx).WithError(cleanupErr).Errorf("Failed to destroy network for sandbox %q", id)
+					logrus.WithError(cleanupErr).Errorf("Failed to destroy network for sandbox %q", id)
 				}
 			}
 		}()
@@ -348,8 +352,15 @@ func (c *criService) RunPodSandbox(ctx context.Context, r *runtime.RunPodSandbox
 		sandboxCreateNetworkTimer.UpdateSince(netStart)
 	}
 
+	// Check if namespace exists
+	if sandbox.NetNS.NetNamespaceExist(ctx) {
+	    logrus.Printf("TESTING - Before creating task, NetNamespaceExist is true")
+	} else {
+	    logrus.Printf("TESTING - Before creating task, NetNamespaceExist is false")
+	}
+	
 	// Create sandbox task in containerd.
-	log.G(ctx).Tracef("Create sandbox container (id=%q, name=%q).",
+	logrus.Tracef("Create sandbox container (id=%q, name=%q).",
 		id, name)
 
 	taskOpts := c.taskOpts(ociRuntime.Type)
@@ -361,13 +372,21 @@ func (c *criService) RunPodSandbox(ctx context.Context, r *runtime.RunPodSandbox
 	if err != nil {
 		return nil, fmt.Errorf("failed to create containerd task: %w", err)
 	}
+
+	// Check if namespace exists
+	if sandbox.NetNS.NetNamespaceExist(ctx) {
+	    logrus.Printf("TESTING - After creating task, NetNamespaceExist is true")
+	} else {
+	    logrus.Printf("TESTING - After creating task, NetNamespaceExist is false")
+	}
+
 	defer func() {
 		if retErr != nil {
 			deferCtx, deferCancel := util.DeferContext()
 			defer deferCancel()
 			// Cleanup the sandbox container if an error is returned.
 			if _, err := task.Delete(deferCtx, containerd.WithProcessKill); err != nil && !errdefs.IsNotFound(err) {
-				log.G(ctx).WithError(err).Errorf("Failed to delete sandbox container %q", id)
+				logrus.WithError(err).Errorf("Failed to delete sandbox container %q", id)
 				cleanupErr = err
 			}
 		}
@@ -380,6 +399,7 @@ func (c *criService) RunPodSandbox(ctx context.Context, r *runtime.RunPodSandbox
 	}
 
 	if !hostNetwork(config) && userNsEnabled {
+		logrus.Println("TESTING - Setting up network namespace with userNsEnabled")
 		// If userns is enabled, then the netns was created by the OCI runtime
 		// when creating "task". The OCI runtime needs to create the netns
 		// because, if userns is in use, the netns needs to be owned by the
@@ -404,6 +424,8 @@ func (c *criService) RunPodSandbox(ctx context.Context, r *runtime.RunPodSandbox
 			return nil, fmt.Errorf("failed to create network namespace for sandbox %q: %w", id, err)
 		}
 
+		logrus.Println("TESTING - After NewNetNSFromPID, this is the NetNSPath: ", sandbox.NetNSPath)
+
 		// Verify task is still in created state.
 		if st, err := task.Status(ctx); err != nil || st.Status != containerd.Created {
 			return nil, fmt.Errorf("failed to create pod sandbox %q: err is %v - status is %q and is expected %q", id, err, st.Status, containerd.Created)
@@ -413,8 +435,8 @@ func (c *criService) RunPodSandbox(ctx context.Context, r *runtime.RunPodSandbox
 		defer func() {
 			// Remove the network namespace only if all the resource cleanup is done.
 			if retErr != nil && cleanupErr == nil {
-				if cleanupErr = sandbox.NetNS.Remove(); cleanupErr != nil {
-					log.G(ctx).WithError(cleanupErr).Errorf("Failed to remove network namespace %s for sandbox %q", sandbox.NetNSPath, id)
+				if cleanupErr = sandbox.NetNS.Remove(ctx); cleanupErr != nil {
+					logrus.WithError(cleanupErr).Errorf("Failed to remove network namespace %s for sandbox %q", sandbox.NetNSPath, id)
 					return
 				}
 				sandbox.NetNSPath = ""
@@ -441,7 +463,7 @@ func (c *criService) RunPodSandbox(ctx context.Context, r *runtime.RunPodSandbox
 				defer deferCancel()
 				// Teardown network if an error is returned.
 				if cleanupErr = c.teardownPodNetwork(deferCtx, sandbox); cleanupErr != nil {
-					log.G(ctx).WithError(cleanupErr).Errorf("Failed to destroy network for sandbox %q", id)
+					logrus.WithError(cleanupErr).Errorf("Failed to destroy network for sandbox %q", id)
 				}
 			}
 		}()
@@ -459,6 +481,13 @@ func (c *criService) RunPodSandbox(ctx context.Context, r *runtime.RunPodSandbox
 		}
 
 		sandboxCreateNetworkTimer.UpdateSince(netStart)
+	}
+
+	// Check if namespace exists
+	if sandbox.NetNS.NetNamespaceExist(ctx) {
+	    logrus.Printf("TESTING - Before creating task, NetNamespaceExist is true")
+	} else {
+	    logrus.Printf("TESTING - Before creating task, NetNamespaceExist is false")
 	}
 
 	err = c.nri.RunPodSandbox(ctx, &sandbox)
